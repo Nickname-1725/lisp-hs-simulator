@@ -1,6 +1,5 @@
 
 (defmacro def-hs-data (type-name &rest clauses)
-  (declare (ignorable type-name))
   (labels ((doc-gen (type-name)
              (format nil "这是CL生成的模拟Haskell类型(~a)" type-name))
            (parse-args (args)
@@ -139,7 +138,7 @@
         (parse-bind-clauses value-bind-pair-ls  body))))
 
 (defmacro with-hs-let-match* (value-bind-pair-ls &body body)
-  (declare (ignorable value-bind-pair-ls body))
+  "模拟Haskell中的let模式匹配(多行,可嵌套)"
   (labels ((flatten-bind-clause (clause)
              (destructuring-bind (value constru-clause) clause
                (destructuring-bind (constru &rest name-ls) constru-clause
@@ -158,7 +157,6 @@
 
 (defmacro with-hs-case-of-match (value &rest pattern-clauses)
   "模拟Haskell中的case of模式匹配"
-  (declare (ignorable value pattern-clauses))
   (labels ((parse-pattern-clause (clause additional-block)
              (destructuring-bind (constru-clause &rest branch) clause
                `(handler-case
@@ -173,7 +171,6 @@
 
 (defmacro with-hs-case-of-match* (value &rest pattern-clauses)
   "模拟Haskell中的case of模式匹配(嵌套版)"
-  (declare (ignorable value pattern-clauses))
   (labels ((parse-pattern-clause (clause additional-block)
              (destructuring-bind (constru-clause &rest branch) clause
                `(handler-case
