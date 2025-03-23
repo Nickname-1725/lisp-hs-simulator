@@ -156,6 +156,36 @@
     `(with-hs-let-match ,(mapcan #'flatten-bind-clause value-bind-pair-ls)
        ,@body))) ; 需要把嵌套列表铺平即可
 
+(defmacro with-hs-case-of-match (value &rest pattern-clauses)
+  "模拟Haskell中的case of模式匹配"
+  (declare (ignorable value pattern-clauses))
+  (labels ((parse-pattern-clause (clause additional-block)
+             (destructuring-bind (constru-clause &rest branch) clause
+               `(handler-case
+                    (with-hs-let-match ((,value ,constru-clause)) ,@branch)
+                  (t (err) (declare (ignore err))
+                    ,additional-block))
+               ))
+           (parse-pattern-clauses (clauses)
+             (if (null clauses) `(error "模式匹配未穷尽!~%")
+                 (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
+    (parse-pattern-clauses pattern-clauses)))
+
+(defmacro with-hs-case-of-match* (value &rest pattern-clauses)
+  "模拟Haskell中的case of模式匹配(嵌套版)"
+  (declare (ignorable value pattern-clauses))
+  (labels ((parse-pattern-clause (clause additional-block)
+             (destructuring-bind (constru-clause &rest branch) clause
+               `(handler-case
+                    (with-hs-let-match* ((,value ,constru-clause)) ,@branch)
+                  (t (err) (declare (ignore err))
+                    ,additional-block))
+               ))
+           (parse-pattern-clauses (clauses)
+             (if (null clauses) `(error "模式匹配未穷尽!~%")
+                 (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
+    (parse-pattern-clauses pattern-clauses)))
+
 ;;;;;; 以下为测试
 
 ; data List a = List {x::a, xs::List a} | []
@@ -214,3 +244,27 @@
     (let ((ls (|List| 1 2)))
       (format t "~a(实际上不会运行)~%" ls))
   (t (err) (warn "错误信息:~a~%" err)))
+
+(let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
+                  :initial-value ([]))))
+  (format t "##case-of匹配1~%")
+  (with-hs-case-of-match ls
+    (([]) nil)
+    ((|List| a _)
+     (format t "头部=~a~%" a))))
+
+(let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
+                  :initial-value ([]))))
+  (format t "##case-of匹配2(嵌套版)~%")
+  (with-hs-case-of-match* ls
+    (([]) nil)
+    ((|List| a (c (|List| b _)))
+     (format t "头部=~a,接下来=~a~%" a b))))
+
+(let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
+                  :initial-value ([]))))
+  (format t "##case-of匹配未穷尽！~%")
+  (handler-case
+      (with-hs-case-of-match ls
+        (([]) nil))
+    (t (err) (warn "错误信息:~a~%" err))))
