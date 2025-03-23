@@ -1,0 +1,20 @@
+# emacs编辑产生
+*.lisp~
+.#-emacs*
+
+# 编译产生
+*.fasl
+*.fas
+/build/
+# ECL编译产生
+*.o
+*.c
+*.data
+*.eclh
+
+# 数据文件
+/config/
+
+# 设计文档
+design.md
+
