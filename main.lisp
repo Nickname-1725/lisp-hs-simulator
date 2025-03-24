@@ -183,6 +183,33 @@
                  (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
     (parse-pattern-clauses pattern-clauses)))
 
+(defmacro def-hs-func (fun-name type-constrain &rest branches)
+  "模拟Haskell函数模式匹配"
+  (declare (ignorable type-constrain))
+  (labels ((parse-pattern-clause (asigned-name clause)
+             (destructuring-bind (branch-key args-match &rest body) clause
+               (ecase branch-key
+                 (branch
+                  `(,asigned-name ,(mapcar #'car args-match)
+                                  (with-hs-let-match ,args-match ,@body)))
+                 (until (error "非法的分支结构")))))
+           (parse-pattern-clauses (clauses)
+             (let (label-name)
+               (loop for clause in clauses
+                     do (setf label-name (gensym))
+                     collect `(,label-name . ,(parse-pattern-clause label-name clause)))))
+           (body-gen (label-ls arg-ls)
+             (if (null label-ls) `(error "模式匹配未穷尽(函数定义)!~%")
+                 `(handler-case (,(car label-ls) ,@arg-ls)
+                    (t (err) (declare (ignore err))
+                      ,(body-gen (cdr label-ls) arg-ls))))))
+    (let* ((arg-ls (mapcar #'car (cadar branches)))
+           (label-pairs (parse-pattern-clauses branches))
+           (label-ls (mapcar #'car label-pairs))
+           (label-defs (mapcar #'cdr label-pairs)))
+      `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
+         (labels ,label-defs ,(body-gen label-ls arg-ls))))))
+
 ;;;;;; 以下为测试
 
 ; data List a = List {x::a, xs::List a} | []
@@ -265,3 +292,14 @@
       (with-hs-case-of-match ls
         (([]) nil))
     (t (err) (warn "错误信息:~a~%" err))))
+
+(format t "函数的模式匹配~%")
+(def-hs-func test ()
+  (branch ((arg1 (|List| a _))
+           (arg2 ([])))
+          (format t "第一个列表头部:~a;第二个是空列表~a~%" a arg2))
+  (branch ((arg3 ([]))
+           (arg4 ([])))
+          (format t "第一个是空列表哈哈~%")))
+(test (|List| 1 ([])) ([]))
+(test ([]) ([]))
