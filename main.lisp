@@ -183,15 +183,15 @@
                  (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
     (parse-pattern-clauses pattern-clauses)))
 
-(defmacro def-hs-func (fun-name type-constrain &rest branches)
+(defmacro def-hs-func (fun-name type-signature &rest branches)
   "模拟Haskell函数模式匹配"
-  (declare (ignorable type-constrain))
   (labels ((parse-pattern-clause (asigned-name clause)
-             (destructuring-bind (branch-key args-match &rest body) clause
+             (destructuring-bind (branch-key args-match &body body) clause
                (ecase branch-key
                  (branch
-                  `(,asigned-name ,(mapcar #'car args-match)
-                                  (with-hs-let-match ,args-match ,@body)))
+                  (let ((arg-ls (mapcar #'car args-match)))
+                    `(,asigned-name ,arg-ls (declare (ignorable ,@arg-ls)) ; 忽略入参，作为暂时措施
+                                    (with-hs-let-match ,args-match ,@body))))
                  (until (error "非法的分支结构")))))
            (parse-pattern-clauses (clauses)
              (let (label-name)
@@ -203,11 +203,46 @@
                  `(handler-case (,(car label-ls) ,@arg-ls)
                     (t (err) (declare (ignore err))
                       ,(body-gen (cdr label-ls) arg-ls))))))
-    (let* ((arg-ls (mapcar #'car (cadar branches)))
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
+                           (mapcar #'car (cadar branches))))
+           (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
+                                     :test #'(lambda (item x) (eql item (car x)))))
            (label-pairs (parse-pattern-clauses branches))
            (label-ls (mapcar #'car label-pairs))
            (label-defs (mapcar #'cdr label-pairs)))
       `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
+         (declare ,@arg-signature-ls)
+         (labels ,label-defs ,(body-gen label-ls arg-ls))))))
+
+(defmacro def-hs-func* (fun-name type-signature &rest branches)
+  "模拟Haskell函数模式匹配(可嵌套版本)" ; 几乎复制
+  (labels ((parse-pattern-clause (asigned-name clause)
+             (destructuring-bind (branch-key args-match &body body) clause
+               (ecase branch-key
+                 (branch
+                  (let ((arg-ls (mapcar #'car args-match)))
+                    `(,asigned-name ,arg-ls (declare (ignorable ,@arg-ls)) ; 忽略入参，作为暂时措施
+                                    (with-hs-let-match* ,args-match ,@body))))
+                 (until (error "非法的分支结构")))))
+           (parse-pattern-clauses (clauses)
+             (let (label-name)
+               (loop for clause in clauses
+                     do (setf label-name (gensym))
+                     collect `(,label-name . ,(parse-pattern-clause label-name clause)))))
+           (body-gen (label-ls arg-ls)
+             (if (null label-ls) `(error "模式匹配未穷尽(函数定义)!~%")
+                 `(handler-case (,(car label-ls) ,@arg-ls)
+                    (t (err) (declare (ignore err))
+                      ,(body-gen (cdr label-ls) arg-ls))))))
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
+                           (mapcar #'car (cadar branches))))
+           (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
+                                     :test #'(lambda (item x) (eql item (car x)))))
+           (label-pairs (parse-pattern-clauses branches))
+           (label-ls (mapcar #'car label-pairs))
+           (label-defs (mapcar #'cdr label-pairs)))
+      `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
+         (declare ,@arg-signature-ls)
          (labels ,label-defs ,(body-gen label-ls arg-ls))))))
 
 ;;;;;; 以下为测试
@@ -293,13 +328,34 @@
         (([]) nil))
     (t (err) (warn "错误信息:~a~%" err))))
 
-(format t "函数的模式匹配~%")
-(def-hs-func test ()
+; test-ls :: List a -> b -> c
+; test-ls (List a _) [] = ...
+; test-ls [] []         = ...
+(format t "##函数的模式匹配~%")
+(def-hs-func test-ls (|List| _)
   (branch ((arg1 (|List| a _))
            (arg2 ([])))
           (format t "第一个列表头部:~a;第二个是空列表~a~%" a arg2))
   (branch ((arg3 ([]))
            (arg4 ([])))
           (format t "第一个是空列表哈哈~%")))
-(test (|List| 1 ([])) ([]))
-(test ([]) ([]))
+(test-ls (|List| 1 ([])) ([]))
+(test-ls ([]) ([]))
+
+; test-ls-even-len :: List a -> b
+; test-ls-even-len []                  = ... -- 是偶数
+; test-ls-even-len (List _ [])         = ... -- 是奇数
+; test-ls-even-len (List _ (List _ a)) = test-ls-len a -- 剥掉两层
+
+(format t "##函数的模式匹配2(嵌套模式匹配)~%")
+(def-hs-func* test-ls-even-len (|List|)
+  (branch ((ls ([])))
+          (format t "长度是偶数呢~%"))
+  (branch ((ls (|List| _ (a ([])))))
+          (format t "长度是奇数呢~%"))
+  (branch ((ls (|List| _ (a (|List| _ b)))))
+          (test-ls-even-len b)))
+(let* ((ls1 (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([])))
+       (ls2 (|:| 0 ls1)))
+  (test-ls-even-len ls1)
+  (test-ls-even-len ls2))
