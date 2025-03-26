@@ -183,65 +183,78 @@
                  (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
     (parse-pattern-clauses pattern-clauses)))
 
-(defmacro def-hs-func (fun-name type-signature &rest branches)
-  "模拟Haskell函数模式匹配"
-  (labels ((parse-pattern-clause (asigned-name clause)
-             (destructuring-bind (branch-key args-match &body body) clause
-               (ecase branch-key
-                 (branch
-                  (let ((arg-ls (mapcar #'car args-match)))
-                    `(,asigned-name ,arg-ls (declare (ignorable ,@arg-ls)) ; 忽略入参，作为暂时措施
-                                    (with-hs-let-match ,args-match ,@body))))
-                 (until (error "非法的分支结构")))))
-           (parse-pattern-clauses (clauses)
-             (let (label-name)
-               (loop for clause in clauses
-                     do (setf label-name (gensym))
-                     collect `(,label-name . ,(parse-pattern-clause label-name clause)))))
-           (body-gen (label-ls arg-ls)
-             (if (null label-ls) `(error "模式匹配未穷尽(函数定义)!~%")
-                 `(handler-case (,(car label-ls) ,@arg-ls)
-                    (t (err) (declare (ignore err))
-                      ,(body-gen (cdr label-ls) arg-ls))))))
+
+(labels ((parse-pattern-clause (asigned-name clause match-macro)
+           (destructuring-bind (branch-key args-match &body body) clause
+             (ecase branch-key
+               (branch
+                (let ((arg-ls (mapcar #'car args-match)))
+                  `(,asigned-name ,arg-ls (declare (ignorable ,@arg-ls)) ; 忽略入参，作为暂时措施
+                                  (,match-macro ,args-match ,@body))))
+               (until (error "非法的分支结构")))))
+         (parse-pattern-clauses (clauses &optional (match-macro 'with-hs-let-match))
+           (let (label-name)
+             (loop for clause in clauses
+                   do (setf label-name (gensym))
+                   collect `(,label-name . ,(parse-pattern-clause label-name clause
+                                                                  match-macro)))))
+         (body-gen (label-ls arg-ls)
+           (if (null label-ls) `(error "模式匹配未穷尽(函数定义)!~%")
+               `(handler-case (,(car label-ls) ,@arg-ls)
+                  (t (err) (declare (ignore err))
+                    ,(body-gen (cdr label-ls) arg-ls))))))
+
+  (defmacro def-hs-func (fun-name type-signature &rest branches)
+    "模拟Haskell函数模式匹配"
     (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
                            (mapcar #'car (cadar branches))))
            (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
                                      :test #'(lambda (item x) (eql item (car x)))))
-           (label-pairs (parse-pattern-clauses branches))
+           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match))
            (label-ls (mapcar #'car label-pairs))
            (label-defs (mapcar #'cdr label-pairs)))
       `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
          (declare ,@arg-signature-ls)
-         (labels ,label-defs ,(body-gen label-ls arg-ls))))))
+         (labels ,label-defs ,(body-gen label-ls arg-ls)))))
 
-(defmacro def-hs-func* (fun-name type-signature &rest branches)
-  "模拟Haskell函数模式匹配(可嵌套版本)" ; 几乎复制
-  (labels ((parse-pattern-clause (asigned-name clause)
-             (destructuring-bind (branch-key args-match &body body) clause
-               (ecase branch-key
-                 (branch
-                  (let ((arg-ls (mapcar #'car args-match)))
-                    `(,asigned-name ,arg-ls (declare (ignorable ,@arg-ls)) ; 忽略入参，作为暂时措施
-                                    (with-hs-let-match* ,args-match ,@body))))
-                 (until (error "非法的分支结构")))))
-           (parse-pattern-clauses (clauses)
-             (let (label-name)
-               (loop for clause in clauses
-                     do (setf label-name (gensym))
-                     collect `(,label-name . ,(parse-pattern-clause label-name clause)))))
-           (body-gen (label-ls arg-ls)
-             (if (null label-ls) `(error "模式匹配未穷尽(函数定义)!~%")
-                 `(handler-case (,(car label-ls) ,@arg-ls)
-                    (t (err) (declare (ignore err))
-                      ,(body-gen (cdr label-ls) arg-ls))))))
+  (defmacro def-hs-func* (fun-name type-signature &rest branches)
+    "模拟Haskell函数模式匹配(可嵌套版本)"
     (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
                            (mapcar #'car (cadar branches))))
            (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
                                      :test #'(lambda (item x) (eql item (car x)))))
-           (label-pairs (parse-pattern-clauses branches))
+           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match*))
            (label-ls (mapcar #'car label-pairs))
            (label-defs (mapcar #'cdr label-pairs)))
       `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
+         (declare ,@arg-signature-ls)
+         (labels ,label-defs ,(body-gen label-ls arg-ls)))))
+  
+  (defmacro def-hs-method (fun-name type-signature &rest branches)
+    "模拟Haskell函数模式匹配"
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
+                           (mapcar #'car (cadar branches))))
+           (arg-signature-ls (mapcar #'(lambda (type arg)
+                                         (if (eql '_ type) arg `(,arg ,type)))
+                                     type-signature arg-ls))
+           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match))
+           (label-ls (mapcar #'car label-pairs))
+           (label-defs (mapcar #'cdr label-pairs)))
+      `(defmethod ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
+         (declare ,@arg-signature-ls)
+         (labels ,label-defs ,(body-gen label-ls arg-ls)))))
+
+  (defmacro def-hs-method* (fun-name type-signature &rest branches)
+    "模拟Haskell函数模式匹配(可嵌套版本)"
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
+                           (mapcar #'car (cadar branches))))
+           (arg-signature-ls (mapcar #'(lambda (type arg)
+                                         (if (eql '_ type) arg `(,arg ,type)))
+                                     type-signature arg-ls))
+           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match*))
+           (label-ls (mapcar #'car label-pairs))
+           (label-defs (mapcar #'cdr label-pairs)))
+      `(defmethod ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
          (declare ,@arg-signature-ls)
          (labels ,label-defs ,(body-gen label-ls arg-ls))))))
 
