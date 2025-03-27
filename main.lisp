@@ -137,23 +137,33 @@
         `(progn ,@body)
         (parse-bind-clauses value-bind-pair-ls  body))))
 
+(defun flatten-nested-clause (clause)
+  "解析类似匹配的嵌套语句~@
+  (value1 (constru1 value2 (value3 (constru2 _ (_ (constru 3))))))"
+  (destructuring-bind (value constru-clause) clause
+    (destructuring-bind (constru &rest name-ls) constru-clause
+      (multiple-value-bind (name-ls* sub-name-ls)
+          (loop with new-name
+                for name in name-ls
+                if (listp name)
+                  do (if (eql '_ (car name)) (setf new-name (gensym))
+                         (setf new-name (car name)))
+                  and collect new-name into name-ls*
+                  and collect (cons new-name (cdr name)) into sub-name-ls
+                else if (symbolp name)
+                       collect name into name-ls*
+                else do
+                  (error "~a解析错误，非符号或列表" name)
+                finally (return (values name-ls* sub-name-ls)))
+        (if (null sub-name-ls)
+            `((,value ,(cons constru name-ls*)))
+            (let ((sub-name-ls* (mapcar #'flatten-nested-clause sub-name-ls)))
+              `((,value ,(cons constru name-ls*)) . ,(car sub-name-ls*))))))))
+
 (defmacro with-hs-let-match* (value-bind-pair-ls &body body)
   "模拟Haskell中的let模式匹配(多行,可嵌套)"
-  (labels ((flatten-bind-clause (clause)
-             (destructuring-bind (value constru-clause) clause
-               (destructuring-bind (constru &rest name-ls) constru-clause
-                 (let* ((name-ls* (mapcar #'(lambda (n)
-                                              (cond ((symbolp n) n)
-                                                    ((listp n) (car n))
-                                                    (t (error "~a解析错误,非符号或列表" n))))
-                                          name-ls))
-                        (sub-name-ls (remove-if #'symbolp name-ls)))
-                   (if (null sub-name-ls)
-                       `((,value ,(cons constru name-ls*)))
-                       (let ((sub-name-ls* (mapcar #'flatten-bind-clause sub-name-ls)))
-                         `((,value ,(cons constru name-ls*)) . ,(car sub-name-ls*)))))))))
-    `(with-hs-let-match ,(mapcan #'flatten-bind-clause value-bind-pair-ls)
-       ,@body))) ; 需要把嵌套列表铺平即可
+  `(with-hs-let-match ,(mapcan #'flatten-nested-clause value-bind-pair-ls)
+     ,@body)) ; 需要把嵌套列表铺平即可
 
 (defmacro with-hs-case-of-match (value &rest pattern-clauses)
   "模拟Haskell中的case of模式匹配"
@@ -298,14 +308,14 @@
     (format t "~a~%" b)))
 
 ; let ls = [1,2,3,4,5]
-;     (List a b@(List _ d@(List c e))) = ls
+;     (List a _@(List _ _@(List c e))) = ls
 ;     (List f _) = e
 ; in ...
 (let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
                   :initial-value ([]))))
   (format t "##模式匹配3~%")
   (format t "~a~%" ls)
-  (with-hs-let-match* ((ls (|List| a (b (|List| _ (d (|List| c e))))))
+  (with-hs-let-match* ((ls (|List| a (_ (|List| _ (_ (|List| c e))))))
                        (e (|List| f _)))
     (format t "~a~%" a)
     (format t "~a~%" c)
@@ -330,7 +340,7 @@
   (format t "##case-of匹配2(嵌套版)~%")
   (with-hs-case-of-match* ls
     (([]) nil)
-    ((|List| a (c (|List| b _)))
+    ((|List| a (_ (|List| b _)))
      (format t "头部=~a,接下来=~a~%" a b))))
 
 (let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
