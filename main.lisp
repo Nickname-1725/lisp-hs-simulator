@@ -165,34 +165,23 @@
   `(with-hs-let-match ,(mapcan #'flatten-nested-clause value-bind-pair-ls)
      ,@body)) ; 需要把嵌套列表铺平即可
 
-(defmacro with-hs-case-of-match (value &rest pattern-clauses)
-  "模拟Haskell中的case of模式匹配"
-  (labels ((parse-pattern-clause (clause additional-block)
-             (destructuring-bind (constru-clause &rest branch) clause
-               `(handler-case
-                    (with-hs-let-match ((,value ,constru-clause)) ,@branch)
-                  (t (err) (declare (ignore err))
-                    ,additional-block))
-               ))
-           (parse-pattern-clauses (clauses)
-             (if (null clauses) `(error "模式匹配未穷尽!~%")
-                 (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
-    (parse-pattern-clauses pattern-clauses)))
-
-(defmacro with-hs-case-of-match* (value &rest pattern-clauses)
-  "模拟Haskell中的case of模式匹配(嵌套版)"
-  (labels ((parse-pattern-clause (clause additional-block)
-             (destructuring-bind (constru-clause &rest branch) clause
-               `(handler-case
-                    (with-hs-let-match* ((,value ,constru-clause)) ,@branch)
-                  (t (err) (declare (ignore err))
-                    ,additional-block))
-               ))
-           (parse-pattern-clauses (clauses)
-             (if (null clauses) `(error "模式匹配未穷尽!~%")
-                 (parse-pattern-clause (car clauses) (parse-pattern-clauses (cdr clauses))))))
-    (parse-pattern-clauses pattern-clauses)))
-
+(labels ((parse-pattern-clause (value clause additional-block macro-name)
+           (destructuring-bind (constru-clause &rest branch) clause
+             `(handler-case
+                  (,macro-name ((,value ,constru-clause)) ,@branch)
+                (t (err) (declare (ignore err))
+                  ,additional-block))))
+         (parse-pattern-clauses (value clauses &optional (macro-name 'with-hs-let-match))
+           (if (null clauses) `(error "模式匹配未穷尽!~%")
+               (parse-pattern-clause value (car clauses)
+                                     (parse-pattern-clauses value (cdr clauses) macro-name)
+                                     macro-name))))
+  (defmacro with-hs-case-of-match (value &rest pattern-clauses)
+    "模拟Haskell中的case of模式匹配"
+    (parse-pattern-clauses value pattern-clauses 'with-hs-let-match))
+  (defmacro with-hs-case-of-match* (value &rest pattern-clauses)
+    "模拟Haskell中的case of模式匹配(嵌套版)"
+    (parse-pattern-clauses value pattern-clauses 'with-hs-let-match*)))
 
 (labels ((parse-pattern-clause (asigned-name clause match-macro)
            (destructuring-bind (branch-key args-match &body body) clause
