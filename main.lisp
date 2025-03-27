@@ -167,10 +167,18 @@
 
 (labels ((parse-pattern-clause (value clause additional-block macro-name)
            (destructuring-bind (constru-clause &rest branch) clause
-             `(handler-case
-                  (,macro-name ((,value ,constru-clause)) ,@branch)
-                (t (err) (declare (ignore err))
-                  ,additional-block))))
+             (cond
+               ((symbolp constru-clause)
+                (if (eql '_ constru-clause)
+                    `(progn ,@branch)
+                    `(let ((,constru-clause ,value))
+                       ,@branch)))
+               ((listp clause)
+                `(handler-case
+                     (,macro-name ((,value ,constru-clause)) ,@branch)
+                   (t (err) (declare (ignore err))
+                     ,additional-block)))
+               (t (error "在case-of解析中解析失败:~a不是符号或列表" clause)))))
          (parse-pattern-clauses (value clauses &optional (macro-name 'with-hs-let-match))
            (if (null clauses) `(error "模式匹配未穷尽!~%")
                (parse-pattern-clause value (car clauses)
@@ -316,6 +324,9 @@
       (format t "~a(实际上不会运行)~%" ls))
   (t (err) (warn "错误信息:~a~%" err)))
 
+; case ls of
+;   []         -> ...
+;   (List a _) -> ...
 (let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
                   :initial-value ([]))))
   (format t "##case-of匹配1~%")
@@ -324,6 +335,9 @@
     ((|List| a _)
      (format t "头部=~a~%" a))))
 
+; case ls of
+;   []                    -> ...
+;   (List a _@(List b _)) -> ...
 (let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
                   :initial-value ([]))))
   (format t "##case-of匹配2(嵌套版)~%")
@@ -332,6 +346,8 @@
     ((|List| a (_ (|List| b _)))
      (format t "头部=~a,接下来=~a~%" a b))))
 
+; case ls of
+;   [] -> ...
 (let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
                   :initial-value ([]))))
   (format t "##case-of匹配未穷尽！~%")
@@ -339,6 +355,13 @@
       (with-hs-case-of-match ls
         (([]) nil))
     (t (err) (warn "错误信息:~a~%" err))))
+
+(let ((ls (reduce #'(lambda (acc x) (|:| x acc)) (reverse '(1 2 3 4 5))
+                  :initial-value ([]))))
+  (format t "##case-of兜底匹配_！~%")
+  (with-hs-case-of-match ls
+    (([]) nil)
+    (_ (format t "我不知道它是什么，反正不是空列表!"))))
 
 ; test-ls :: List a -> b -> c
 ; test-ls (List a _) [] = ...
