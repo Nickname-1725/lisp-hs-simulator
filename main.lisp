@@ -191,13 +191,29 @@
     "模拟Haskell中的case of模式匹配(嵌套版)"
     (parse-pattern-clauses value pattern-clauses 'with-hs-let-match*)))
 
-(labels ((parse-pattern-clause (asigned-name clause match-macro)
+(labels ((parse-args-matchs (args-match-ls)
+           (let* (ignored-ls
+                  (arg-ls
+                    (mapcar #'(lambda (arg)
+                                (cond
+                                  ((symbolp arg)
+                                   (if (eql '_ arg)
+                                       (let ((new-arg (gensym)))
+                                         (push new-arg ignored-ls) new-arg)
+                                       arg))
+                                  ((listp arg) (car arg))
+                                  (t (error "在定义函数入口参数的时候无法解析~a~%" arg))))
+                            args-match-ls))
+                  (args-match-ls* (remove-if-not #'listp args-match-ls)))
+             (values arg-ls ignored-ls args-match-ls*)))
+         (parse-pattern-clause (asigned-name clause match-macro)
            (destructuring-bind (branch-key args-match &body body) clause
              (ecase branch-key
                (branch
-                (let ((arg-ls (mapcar #'car args-match)))
-                  `(,asigned-name ,arg-ls (declare (ignorable ,@arg-ls)) ; 忽略入参，作为暂时措施
-                                  (,match-macro ,args-match ,@body))))
+                (multiple-value-bind (arg-ls ignored-ls args-match*)
+                    (parse-args-matchs args-match)
+                  `(,asigned-name ,arg-ls (declare (ignore ,@ignored-ls))
+                                  (,match-macro ,args-match* ,@body))))
                (until (error "非法的分支结构")))))
          (parse-pattern-clauses (clauses &optional (match-macro 'with-hs-let-match))
            (let (label-name)
@@ -213,8 +229,7 @@
 
   (defmacro def-hs-func (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
-                           (mapcar #'car (cadar branches))))
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
            (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
                                      :test #'(lambda (item x) (eql item (car x)))))
            (label-pairs (parse-pattern-clauses branches 'with-hs-let-match))
@@ -226,8 +241,7 @@
 
   (defmacro def-hs-func* (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配(可嵌套版本)"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
-                           (mapcar #'car (cadar branches))))
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
            (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
                                      :test #'(lambda (item x) (eql item (car x)))))
            (label-pairs (parse-pattern-clauses branches 'with-hs-let-match*))
@@ -239,8 +253,7 @@
   
   (defmacro def-hs-method (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
-                           (mapcar #'car (cadar branches))))
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
            (arg-signature-ls (mapcar #'(lambda (type arg)
                                          (if (eql '_ type) arg `(,arg ,type)))
                                      type-signature arg-ls))
@@ -253,8 +266,7 @@
 
   (defmacro def-hs-method* (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配(可嵌套版本)"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
-                           (mapcar #'car (cadar branches))))
+    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
            (arg-signature-ls (mapcar #'(lambda (type arg)
                                          (if (eql '_ type) arg `(,arg ,type)))
                                      type-signature arg-ls))
