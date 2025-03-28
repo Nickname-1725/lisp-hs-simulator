@@ -90,7 +90,17 @@
                                                            (slot-value data alias)))
                                      field-alias-ls)))
                       (values field-value-ls field-len))
-                    (error "~a类型数据匹配~a构造器时错误" ',type-name tag)))))
+                    (error "~a类型数据匹配~a构造器时错误" ',type-name tag))))
+           (require-hs-all-fields-gen (type-name parse-list)
+             "生成用于Haskell中show的默认实现的访问器"
+             `(defmethod require-hs-all-fields ((data ,type-name))
+                "这是由Common Lisp生成的函数，直接获取代数数据类型所有字段值"
+                (let* ((tag (tag data))
+                       (constru-info (cdr (assoc tag ',parse-list)))
+                       (field-alias-ls (mapcar #'(lambda (x) (getf (cdr x) :alias)) constru-info))
+                       (field-value-ls (mapcar #'(lambda (alias) (slot-value data alias))
+                                               field-alias-ls)))
+                  (values field-value-ls tag)))))
     
     (let* ((parse-list `,(mapcar #'parse-clause clauses))
            (slots `,(slots-gen (reduce #'append (mapcar #'cdr parse-list))))
@@ -108,7 +118,8 @@
          ;; 定义函数
          ,@(constructor-fun-defs-gen type-name slots-describe)
          ,(record-field-accessor-gen type-name parse-list)
-         ,(accessor-for-hs-match-gen type-name parse-list)))))
+         ,(accessor-for-hs-match-gen type-name parse-list)
+         ,(require-hs-all-fields-gen type-name parse-list)))))
 
 (defmacro with-hs-let-match (value-bind-pair-ls &body body)
   "模拟Haskell中的let模式匹配(多行)"
@@ -444,9 +455,18 @@
   (test-ls-even-len ls1)
   (test-ls-even-len ls2))
 
-(format t "##Show类型类及其默认实现")
+(format t "##Show类型类及其默认实现~%")
 (def-hs-class |Show|
   (|show| ()
     (branch (x)
-      (format t "~a~%" x))))
-(|show| ([]))
+      (cond
+        ((or (numberp x) (stringp x)) (format nil "~a" x))
+        (t (multiple-value-bind (field-values constructor-name)
+               (require-hs-all-fields x)
+             (if (null field-values)
+                 (format nil "~a" constructor-name)
+                 (format nil "(~a~{ ~a~})" constructor-name
+                         (mapcar #'(lambda (v) (|show| v))
+                                 field-values)))))))))
+(let ((ls (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([]))))
+  (format t "~a~%" (|show| ls)))
