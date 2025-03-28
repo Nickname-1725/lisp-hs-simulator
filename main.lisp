@@ -421,7 +421,7 @@
   (format t "##case-of兜底匹配_！~%")
   (with-hs-case-of-match ls
     (([]) nil)
-    (_ (format t "我不知道它是什么，反正不是空列表!"))))
+    (_ (format t "我不知道它是什么，反正不是空列表!~%"))))
 
 ; test-ls :: List a -> b -> c
 ; test-ls (List a _) [] = ...
