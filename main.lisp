@@ -277,6 +277,43 @@
          (declare ,@arg-signature-ls)
          (labels ,label-defs ,(body-gen label-ls arg-ls))))))
 
+(defparameter *class-registry* (make-hash-table))
+; key: ClassName -> value: (:funcs (:implmted (func1 func2 func3)
+;                                   :not-implmted (func4))
+;                           :instances ())
+
+(defmacro def-hs-class (class-name &rest func-ls)
+  "模拟Haskell类型类定义"
+  (let* ((implmted-fun-ls (remove-if-not #'(lambda (x) (> (length x) 2)) func-ls))
+         (not-implmted-fun-ls (remove-if #'(lambda (x) (> (length x) 2)) func-ls))
+         (implmted-names (mapcar #'car implmted-fun-ls))
+         (not-implmted-names (mapcar #'car not-implmted-fun-ls)))
+    (setf (gethash class-name *class-registry*) `(:funcs (:implmted ',implmted-names
+                                                          :not-implmted ',not-implmted-names)
+                                                  :instances ()))
+    `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method x))implmted-fun-ls))))
+
+(defmacro def-hs-class* (class-name &rest func-ls)
+  "模拟Haskell类型类定义(可嵌套版本)"
+  (let* ((implmted-fun-ls (remove-if-not #'(lambda (x) (> (length x) 2)) func-ls))
+         (not-implmted-fun-ls (remove-if #'(lambda (x) (> (length x) 2)) func-ls))
+         (implmted-names (mapcar #'car implmted-fun-ls))
+         (not-implmted-names (mapcar #'car not-implmted-fun-ls)))
+    (setf (gethash class-name *class-registry*) `(:funcs (:implmted ',implmted-names
+                                                          :not-implmted ',not-implmted-names)
+                                                  :instances ()))
+    `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x))implmted-fun-ls))))
+
+;(def-hs-class |Class-name|
+;  (func1 () ((branch ...) (branch ...)))
+;  (func2 () (...))
+;  (func3 () (...))
+;  (func4 ())) ;第4个不给默认实现
+
+; class ClassName where
+;   func1 = ...
+;   func2 = ...
+
 ;;;;;; 以下为测试
 
 ; data List a = List {x::a, xs::List a} | []
@@ -406,3 +443,10 @@
        (ls2 (|:| 0 ls1)))
   (test-ls-even-len ls1)
   (test-ls-even-len ls2))
+
+(format t "##Show类型类及其默认实现")
+(def-hs-class |Show|
+  (|show| ()
+    (branch (x)
+      (format t "~a~%" x))))
+(|show| ([]))
