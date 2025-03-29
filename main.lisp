@@ -271,8 +271,8 @@
            (label-pairs (parse-pattern-clauses branches 'with-hs-let-match))
            (label-ls (mapcar #'car label-pairs))
            (label-defs (mapcar #'cdr label-pairs)))
-      `(defmethod ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
-         (declare ,@arg-signature-ls)
+      `(defmethod ,fun-name ,arg-signature-ls
+         ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
          (labels ,label-defs ,(body-gen label-ls arg-ls)))))
 
   (defmacro def-hs-method* (fun-name type-signature &rest branches)
@@ -284,9 +284,11 @@
            (label-pairs (parse-pattern-clauses branches 'with-hs-let-match*))
            (label-ls (mapcar #'car label-pairs))
            (label-defs (mapcar #'cdr label-pairs)))
-      `(defmethod ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
-         (declare ,@arg-signature-ls)
+      `(defmethod ,fun-name ,arg-signature-ls
+         ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
          (labels ,label-defs ,(body-gen label-ls arg-ls))))))
+
+;;;; 以下模拟Haskell类型
 
 (defparameter *class-registry* (make-hash-table))
 ; key: ClassName -> value: (:funcs (:implmted (func1 func2 func3)
@@ -299,8 +301,8 @@
          (not-implmted-fun-ls (remove-if #'(lambda (x) (> (length x) 2)) func-ls))
          (implmted-names (mapcar #'car implmted-fun-ls))
          (not-implmted-names (mapcar #'car not-implmted-fun-ls)))
-    (setf (gethash class-name *class-registry*) `(:funcs (:implmted ',implmted-names
-                                                          :not-implmted ',not-implmted-names)
+    (setf (gethash class-name *class-registry*) `(:funcs (:implmted ,implmted-names
+                                                          :not-implmted ,not-implmted-names)
                                                   :instances ()))
     `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method x))implmted-fun-ls))))
 
@@ -310,8 +312,8 @@
          (not-implmted-fun-ls (remove-if #'(lambda (x) (> (length x) 2)) func-ls))
          (implmted-names (mapcar #'car implmted-fun-ls))
          (not-implmted-names (mapcar #'car not-implmted-fun-ls)))
-    (setf (gethash class-name *class-registry*) `(:funcs (:implmted ',implmted-names
-                                                          :not-implmted ',not-implmted-names)
+    (setf (gethash class-name *class-registry*) `(:funcs (:implmted ,implmted-names
+                                                          :not-implmted ,not-implmted-names)
                                                   :instances ()))
     `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x))implmted-fun-ls))))
 
@@ -324,6 +326,58 @@
 ; class ClassName where
 ;   func1 = ...
 ;   func2 = ...
+
+(defmacro def-hs-instance (class-name type-name &rest func-form-ls)
+  "模拟Haskell的实例定义"
+  (let ((fun-ls (mapcar #'car func-form-ls))
+        (registry (gethash class-name *class-registry*)))
+    (when (null registry) (error "没有类型类~a!~%" class-name))
+    (let* ((instance-ls (getf registry :instance))
+           (funcs (getf registry :funcs))
+           (implmted-funcs (getf funcs :implmted))
+           (not-implmted-funcs (getf funcs :not-implmted)))
+      (unless (every #'(lambda (f) (member f fun-ls)) not-implmted-funcs)
+        (error "~a类型作为类~a实例化时下列函数其中的某些缺少定义:~{~a. ~}~%"
+               type-name class-name not-implmted-funcs))
+      (unless (every #'(lambda (f) (or (member f implmted-funcs)
+                                       (member f not-implmted-funcs)))
+                     fun-ls)
+        (error "~a类型的某些方法不是~a类的方法!您给出~{~a. ~};~@
+               实际上只有~{~a. ~}(已实现); ~{~a. ~}(未实现)."
+               type-name class-name fun-ls implmted-funcs not-implmted-funcs))
+      (unless (member type-name instance-ls) (push type-name instance-ls)) ; 注册实例
+      `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method x)) func-form-ls)))))
+
+(defmacro def-hs-instance* (class-name type-name &rest func-form-ls)
+  "模拟Haskell的实例定义"
+  (let ((fun-ls (mapcar #'car func-form-ls))
+        (registry (gethash class-name *class-registry*)))
+    (when (null registry) (error "没有类型类~a!~%" class-name))
+    (let* ((instance-ls (getf registry :instance))
+           (funcs (getf registry :funcs))
+           (implmted-funcs (getf funcs :implmted))
+           (not-implmted-funcs (getf funcs :not-implmted)))
+      (unless (every #'(lambda (f) (member f fun-ls)) not-implmted-funcs)
+        (error "~a类型作为类~a实例化时下列函数其中的某些缺少定义:~{~a. ~}~%"
+               type-name class-name not-implmted-funcs))
+      (unless (every #'(lambda (f) (or (member f implmted-funcs)
+                                       (member f not-implmted-funcs)))
+                     fun-ls)
+        (error "~a类型的某些方法不是~a类的方法!您给出~{~a. ~};~@
+               实际上只有~{~a. ~}(已实现); ~{~a. ~}(未实现)."
+               type-name class-name fun-ls implmted-funcs not-implmted-funcs))
+      (unless (member type-name instance-ls) (push type-name instance-ls)) ; 注册实例
+      `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x)) func-form-ls)))))
+
+;(def-hs-instance |Class-name| |Type-name|
+;  (func1 () ((branch ...) (branch ...)))
+;  (func2 () (...)) ; func3有默认实现无需定义
+;  (func4 () (...)))
+
+; instance ClassName TypeName where
+;   func1 = ...
+;   func2 = ...
+;   func4 = ...
 
 ;;;;;; 以下为测试
 
@@ -456,8 +510,11 @@
   (test-ls-even-len ls2))
 
 (format t "##Show类型类及其默认实现~%")
+(def-hs-data |Maybe|
+  (|Just| a)
+  (|Nothing|))
 (def-hs-class |Show|
-  (|show| ()
+  (|show| (_)
     (branch (x)
       (cond
         ((or (numberp x) (stringp x)) (format nil "~a" x))
@@ -468,5 +525,20 @@
                  (format nil "(~a~{ ~a~})" constructor-name
                          (mapcar #'(lambda (v) (|show| v))
                                  field-values)))))))))
-(let ((ls (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([]))))
-  (format t "~a~%" (|show| ls)))
+(def-hs-instance |Show| |List|
+  (|show| (|List|)
+    (branch ((_ ([])))
+            "[]")
+    (branch ((hs-ls (|List| _ _)))
+            (labels ((handler (hs-ls &optional (headp nil))
+                       (cond
+                         ((eql '[] (tag hs-ls)) "]")
+                         (t (concatenate 'string (if headp "[" ",")
+                                         (|show| (head hs-ls)) (handler (tail hs-ls)))))))
+              (handler hs-ls t)))))
+(let* ((ls (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([])))
+       (just-ls (|Just| ls))
+       (just-nothing (|Just| (|Nothing|))))
+  (format t "~a~%" (|show| ls))
+  (format t "~a~%" (|show| just-ls))
+  (format t "~a~%" (|show| just-nothing)))
