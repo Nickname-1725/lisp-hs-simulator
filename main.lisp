@@ -236,57 +236,46 @@
            (if (null label-ls) `(error "模式匹配未穷尽(函数定义)!~%")
                `(handler-case (,(car label-ls) ,@arg-ls)
                   (t (err) (declare (ignore err))
-                    ,(body-gen (cdr label-ls) arg-ls))))))
+                    ,(body-gen (cdr label-ls) arg-ls)))))
+
+         (form-gen (fun-name type-signature form-type use-macro-name branches)
+           "根据上述的帮助函数统一生成函数/方法的表达式"
+           (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
+                                  (cadar branches)))
+                  (label-pairs (parse-pattern-clauses branches use-macro-name))
+                  (label-ls (mapcar #'car label-pairs))
+                  (label-defs (mapcar #'cdr label-pairs)))
+             (ecase form-type
+               (func
+                (let ((arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
+                                                :test #'(lambda (item x) (eql item (car x))))))
+                  `(defun ,fun-name ,arg-ls
+                     ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
+                     (declare ,@arg-signature-ls)
+                     (labels ,label-defs ,(body-gen label-ls arg-ls)))))
+               (method
+                (let ((arg-signature-ls (mapcar #'(lambda (type arg)
+                                                    (if (eql '_ type) arg `(,arg ,type)))
+                                                type-signature arg-ls)))
+                  `(defmethod ,fun-name ,arg-signature-ls
+                     ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
+                     (labels ,label-defs ,(body-gen label-ls arg-ls)))))))))
 
   (defmacro def-hs-func (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
-           (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
-                                     :test #'(lambda (item x) (eql item (car x)))))
-           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match))
-           (label-ls (mapcar #'car label-pairs))
-           (label-defs (mapcar #'cdr label-pairs)))
-      `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
-         (declare ,@arg-signature-ls)
-         (labels ,label-defs ,(body-gen label-ls arg-ls)))))
+    (form-gen fun-name type-signature 'func 'with-hs-let-match branches))
 
   (defmacro def-hs-func* (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配(可嵌套版本)"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
-           (arg-signature-ls (remove '_ (mapcar #'list type-signature arg-ls)
-                                     :test #'(lambda (item x) (eql item (car x)))))
-           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match*))
-           (label-ls (mapcar #'car label-pairs))
-           (label-defs (mapcar #'cdr label-pairs)))
-      `(defun ,fun-name ,arg-ls ,(format nil "这是Common Lisp生成的~a函数,模拟Haskell" fun-name)
-         (declare ,@arg-signature-ls)
-         (labels ,label-defs ,(body-gen label-ls arg-ls)))))
+    (form-gen fun-name type-signature 'func 'with-hs-let-match* branches))
   
   (defmacro def-hs-method (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
-           (arg-signature-ls (mapcar #'(lambda (type arg)
-                                         (if (eql '_ type) arg `(,arg ,type)))
-                                     type-signature arg-ls))
-           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match))
-           (label-ls (mapcar #'car label-pairs))
-           (label-defs (mapcar #'cdr label-pairs)))
-      `(defmethod ,fun-name ,arg-signature-ls
-         ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
-         (labels ,label-defs ,(body-gen label-ls arg-ls)))))
+    (form-gen fun-name type-signature 'method 'with-hs-let-match branches))
 
   (defmacro def-hs-method* (fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配(可嵌套版本)"
-    (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym)) (cadar branches)))
-           (arg-signature-ls (mapcar #'(lambda (type arg)
-                                         (if (eql '_ type) arg `(,arg ,type)))
-                                     type-signature arg-ls))
-           (label-pairs (parse-pattern-clauses branches 'with-hs-let-match*))
-           (label-ls (mapcar #'car label-pairs))
-           (label-defs (mapcar #'cdr label-pairs)))
-      `(defmethod ,fun-name ,arg-signature-ls
-         ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
-         (labels ,label-defs ,(body-gen label-ls arg-ls))))))
+    (form-gen fun-name type-signature 'method 'with-hs-let-match branches)))
 
 ;;;; 以下模拟Haskell类型
 
