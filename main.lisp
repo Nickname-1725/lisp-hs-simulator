@@ -563,3 +563,22 @@
   (format t "~a~%" (|show| ls*))
   (format t "~a~%" (|show| just))
   (format t "~a~%" (|show| just*)))
+
+(format t "## 应用函子类型类~%")
+(def-hs-class |Applicative|
+  (|pure| (_))
+  (<*> (_ _)))
+(def-hs-instance |Applicative| |Maybe|
+  (|pure| (_)
+          (branch (x)
+                  (|Just| x)))
+  (<*> (|Maybe| |Maybe|)
+       (branch ((_ (|Nothing|)) _)
+               (|Nothing|))
+       (branch ((_ (|Just| func)) something)
+               (|fmap| func something))))
+(let* ((just-1+ (|Just| #'1+))
+       (just (|Just| 1))
+       (just* (|<*>| just-1+ just)))
+  (format t "~a~%" (|show| just))
+  (format t "~a~%" (|show| just*)))
