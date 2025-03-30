@@ -531,3 +531,28 @@
   (format t "~a~%" (|show| ls))
   (format t "~a~%" (|show| just-ls))
   (format t "~a~%" (|show| just-nothing)))
+
+(format t "## 函子类型类~%")
+(def-hs-class |Functor|
+  (|fmap| (_ _)))
+(def-hs-instance |Functor| |List|
+  (|fmap| (_ |List|)
+    (branch (_ (_ ([])))
+            ([]))
+    (branch (func (_ (|List| x xs)))
+            (|List| (funcall func x) (|fmap| func xs)))))
+(def-hs-instance |Functor| |Maybe|
+  (|fmap| (_ |Maybe|)
+          (branch (_ (_ (|Nothing|)))
+                  (|Nothing|))
+          (branch (func (_ (|Just| a)))
+                  (|Just| (funcall func a)))))
+(let* ((ls (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([])))
+       (func #'1+)
+       (ls* (|fmap| func ls))
+       (just (|Just| 1))
+       (just* (|fmap| func just)))
+  (format t "~a~%" (|show| ls))
+  (format t "~a~%" (|show| ls*))
+  (format t "~a~%" (|show| just))
+  (format t "~a~%" (|show| just*)))
