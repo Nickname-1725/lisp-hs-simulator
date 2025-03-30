@@ -203,20 +203,27 @@
     (parse-pattern-clauses value pattern-clauses 'with-hs-let-match*)))
 
 (labels ((parse-args-matchs (args-match-ls)
-           (let* (ignored-ls
-                  (arg-ls
-                    (mapcar #'(lambda (arg)
-                                (cond
-                                  ((symbolp arg)
-                                   (if (eql '_ arg)
-                                       (let ((new-arg (gensym)))
-                                         (push new-arg ignored-ls) new-arg)
-                                       arg))
-                                  ((listp arg) (car arg))
-                                  (t (error "在定义函数入口参数的时候无法解析~a~%" arg))))
-                            args-match-ls))
-                  (args-match-ls* (remove-if-not #'listp args-match-ls)))
-             (values arg-ls ignored-ls args-match-ls*)))
+           (loop with new-name
+                 for arg in args-match-ls
+                 if (symbolp arg)
+                   if (eql '_ arg)
+                     do (setf new-name (gensym))
+                         and collect new-name into ignored-ls
+                         and collect new-name into arg-ls
+                 else
+                   collect arg into arg-ls
+                 else if (listp arg)
+                        do (setf new-name (car arg))
+                        and if (eql '_ new-name)
+                              do (setf new-name (gensym))
+                              and collect new-name into arg-ls
+                              and collect (cons new-name (cdr arg)) into args-match-ls*
+                 else
+                   collect new-name into arg-ls
+                   and collect arg into args-match-ls*
+                 else
+                   do (error "在定义函数入口参数的时候无法解析~a~%" arg)
+                 finally (return (values arg-ls ignored-ls args-match-ls*))))
          (parse-pattern-clause (asigned-name clause match-macro)
            (destructuring-bind (branch-key args-match &body body) clause
              (ecase branch-key
