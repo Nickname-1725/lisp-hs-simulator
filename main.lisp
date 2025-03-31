@@ -587,7 +587,10 @@
 (def-hs-class |Monad|
   (|return| (_ _))
   (>>= (_ _))
-  (|fail| (_)))
+  (|fail| (_))
+  (>> (_ _)
+      (branch (m n)
+              (>>= m (lambda (_) (declare (ignore _)) n)))))
 (def-hs-instance |Monad| |Maybe|
   (|return| (_ |Maybe|)
             (branch (x _)
