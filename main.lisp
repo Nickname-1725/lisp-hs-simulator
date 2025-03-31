@@ -628,3 +628,27 @@
        (hs-ls* (>>= hs-ls func)))
   (format t "~a~%" (|show| hs-ls))
   (format t "~a~%" (|show| hs-ls*)))
+
+;; do记号
+(format t "## do记号~%")
+(defmacro with-hs-do (&rest hs-do-clauses)
+  (labels ((parse-clause (clause rest)
+             (case (car clause)
+               (<- (destructuring-bind (x m) (cdr clause)
+                     `(>>= ,m (lambda (,x) ,rest))))
+               (otherwise `(>> ,clause ,@rest))))
+           (parse-clauses (hs-do-clauses)
+             (if (eql 1 (length hs-do-clauses)) (car hs-do-clauses)
+                 (parse-clause (car hs-do-clauses)
+                               (parse-clauses (cdr hs-do-clauses))))))
+    (parse-clauses hs-do-clauses)))
+
+; do
+;   x <- Just 2
+;   y <- Just "!"
+;   Just (show x ++ y)
+(let ((just (with-hs-do
+              (<- x (|Just| 2))
+              (<- y (|Just| "!"))
+              (|Just| (concatenate 'string (|show| x) y)))))
+  (format t "~a~%" (|show| just)))
