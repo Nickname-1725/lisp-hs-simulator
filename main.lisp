@@ -300,7 +300,13 @@
     (setf (gethash class-name *class-registry*) `(:funcs (:implmted ,implmted-names
                                                           :not-implmted ,not-implmted-names)
                                                   :instances ()))
-    `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method x))implmted-fun-ls))))
+    `(progn ,@(mapcar #'(lambda (x)
+                          `(def-hs-method
+                               ,@`(,@x (branch ,(mapcar #'(lambda (x)
+                                                            (declare (ignore x)) '_)
+                                                        (cadr x))))))
+                      not-implmted-fun-ls)
+            ,@(mapcar #'(lambda (x) (cons 'def-hs-method x)) implmted-fun-ls))))
 
 (defmacro def-hs-class* (class-name &rest func-ls)
   "模拟Haskell类型类定义(可嵌套版本)"
@@ -311,7 +317,13 @@
     (setf (gethash class-name *class-registry*) `(:funcs (:implmted ,implmted-names
                                                           :not-implmted ,not-implmted-names)
                                                   :instances ()))
-    `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x))implmted-fun-ls))))
+    `(progn ,@(mapcar #'(lambda (x)
+                          `(def-hs-method
+                               ,@`(,@x (branch ,(mapcar #'(lambda (x)
+                                                            (declare (ignore x)) '_)
+                                                        (cadr x))))))
+                      not-implmted-fun-ls)
+            ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x)) implmted-fun-ls))))
 
 ;(def-hs-class |Class-name|
 ;  (func1 () ((branch ...) (branch ...)))
