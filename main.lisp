@@ -636,7 +636,7 @@
              (case (car clause)
                (<- (destructuring-bind (x m) (cdr clause)
                      `(>>= ,m (lambda (,x) ,rest))))
-               (otherwise `(>> ,clause ,@rest))))
+               (otherwise `(>> ,clause ,rest))))
            (parse-clauses (hs-do-clauses)
              (if (eql 1 (length hs-do-clauses)) (car hs-do-clauses)
                  (parse-clause (car hs-do-clauses)
