@@ -577,6 +577,18 @@
                (|Nothing|))
        (branch ((_ (|Just| func)) something)
                (|fmap| func something))))
+
+(def-hs-func ++* (|List| |List|)
+  (branch ((_ ([])) xs)
+          xs)
+  (branch ((_ (|List| x xs*)) xs)
+          (|List| x (++* xs* xs))))
+(def-hs-func |concat| (|List|)
+  (branch ((_ ([])))
+          ([]))
+  (branch ((_ (|List| x xs)))
+          (++* x (|concat| xs))))
+
 (def-hs-instance |Applicative| |List|
   (|pure| (_ |List|)
           (branch (x _)
@@ -610,16 +622,6 @@
   (|fail| (_)
           (branch (_)
                   (|Nothing|))))
-(def-hs-func ++* (|List| |List|)
-  (branch ((_ ([])) xs)
-          xs)
-  (branch ((_ (|List| x xs*)) xs)
-          (|List| x (++* xs* xs))))
-(def-hs-func |concat| (|List|)
-  (branch ((_ ([])))
-          ([]))
-  (branch ((_ (|List| x xs)))
-          (++* x (|concat| xs))))
 
 (def-hs-instance |Monad| |List|
   (|return| (_ |List|)
