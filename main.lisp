@@ -577,6 +577,13 @@
                (|Nothing|))
        (branch ((_ (|Just| func)) something)
                (|fmap| func something))))
+(def-hs-instance |Applicative| |List|
+  (|pure| (_ |List|)
+          (branch (x _)
+                  (|List| x ([]))))
+  (<*> (|List| |List|)
+       (branch (fs xs)
+               (|concat| (|fmap| #'(lambda (f) (|fmap| f xs)) fs)))))
 (let* ((just-1+ (|Just| #'1+))
        (just (|Just| 1))
        (just* (|<*>| just-1+ just)))
