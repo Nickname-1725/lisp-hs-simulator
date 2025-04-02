@@ -245,7 +245,8 @@
                   (t (err) (declare (ignore err))
                     ,(body-gen (cdr label-ls) arg-ls)))))
 
-         (form-gen (fun-name type-signature form-type use-macro-name branches)
+         (form-gen (fun-name type-signature form-type use-macro-name branches
+                    &optional (check-method #'(lambda (x) (declare (ignore x)) t)))
            "根据上述的帮助函数统一生成函数/方法的表达式"
            (let* ((arg-ls (mapcar #'(lambda (x) (declare (ignore x)) (gensym))
                                   (cadar branches)))
@@ -266,6 +267,7 @@
                                                 type-signature arg-ls)))
                   `(defmethod ,fun-name ,arg-signature-ls
                      ,(format nil "这是Common Lisp生成的~a方法,模拟Haskell" fun-name)
+                     (every ,check-method (list ,@arg-ls))
                      (labels ,label-defs ,(body-gen label-ls arg-ls)))))))))
 
   (defmacro def-hs-func (fun-name type-signature &rest branches)
@@ -276,13 +278,13 @@
     "模拟Haskell函数模式匹配(可嵌套版本)"
     (form-gen fun-name type-signature 'func 'with-hs-let-match* branches))
   
-  (defmacro def-hs-method (fun-name type-signature &rest branches)
+  (defmacro def-hs-method (check-func fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配"
-    (form-gen fun-name type-signature 'method 'with-hs-let-match branches))
+    (form-gen fun-name type-signature 'method 'with-hs-let-match branches check-func))
 
-  (defmacro def-hs-method* (fun-name type-signature &rest branches)
+  (defmacro def-hs-method* (check-func fun-name type-signature &rest branches)
     "模拟Haskell函数模式匹配(可嵌套版本)"
-    (form-gen fun-name type-signature 'method 'with-hs-let-match branches)))
+    (form-gen fun-name type-signature 'method 'with-hs-let-match branches check-func)))
 
 ;;;; 以下模拟Haskell类型
 
@@ -296,34 +298,46 @@
   (let* ((implmted-fun-ls (remove-if-not #'(lambda (x) (> (length x) 2)) func-ls))
          (not-implmted-fun-ls (remove-if #'(lambda (x) (> (length x) 2)) func-ls))
          (implmted-names (mapcar #'car implmted-fun-ls))
-         (not-implmted-names (mapcar #'car not-implmted-fun-ls)))
+         (not-implmted-names (mapcar #'car not-implmted-fun-ls))
+         (check-method `#'(lambda (arg)
+                            (unless
+                                (some #'(lambda (type) (typep arg type))
+                                      (getf (gethash ',class-name *class-registry*) :instances))
+                              (error "似乎不是类型类~a的实例哦." ',class-name))
+                            t)))
     (setf (gethash class-name *class-registry*) `(:funcs (:implmted ,implmted-names
                                                           :not-implmted ,not-implmted-names)
                                                   :instances ()))
     `(progn ,@(mapcar #'(lambda (x)
-                          `(def-hs-method
+                          `(def-hs-method ,check-method
                                ,@`(,@x (branch ,(mapcar #'(lambda (x)
                                                             (declare (ignore x)) '_)
                                                         (cadr x))))))
                       not-implmted-fun-ls)
-            ,@(mapcar #'(lambda (x) (cons 'def-hs-method x)) implmted-fun-ls))))
+            ,@(mapcar #'(lambda (x) `(def-hs-method ,check-method ,@x)) implmted-fun-ls))))
 
 (defmacro def-hs-class* (class-name &rest func-ls)
   "模拟Haskell类型类定义(可嵌套版本)"
   (let* ((implmted-fun-ls (remove-if-not #'(lambda (x) (> (length x) 2)) func-ls))
          (not-implmted-fun-ls (remove-if #'(lambda (x) (> (length x) 2)) func-ls))
          (implmted-names (mapcar #'car implmted-fun-ls))
-         (not-implmted-names (mapcar #'car not-implmted-fun-ls)))
+         (not-implmted-names (mapcar #'car not-implmted-fun-ls))
+         (check-method `#'(lambda (arg)
+                            (unless
+                                (some #'(lambda (type) (typep arg type))
+                                      (getf (gethash ',class-name *class-registry*) :instances))
+                              (error "似乎不是类型类~a的实例哦." ',class-name))
+                            t)))
     (setf (gethash class-name *class-registry*) `(:funcs (:implmted ,implmted-names
                                                           :not-implmted ,not-implmted-names)
                                                   :instances ()))
     `(progn ,@(mapcar #'(lambda (x)
-                          `(def-hs-method
+                          `(def-hs-method*
                                ,@`(,@x (branch ,(mapcar #'(lambda (x)
                                                             (declare (ignore x)) '_)
                                                         (cadr x))))))
                       not-implmted-fun-ls)
-            ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x)) implmted-fun-ls))))
+            ,@(mapcar #'(lambda (x) `(def-hs-method* ,check-method ,@x)) implmted-fun-ls))))
 
 ;(def-hs-class |Class-name|
 ;  (func1 () ((branch ...) (branch ...)))
@@ -340,7 +354,7 @@
   (let ((fun-ls (mapcar #'car func-form-ls))
         (registry (gethash class-name *class-registry*)))
     (when (null registry) (error "没有类型类~a!~%" class-name))
-    (let* ((instance-ls (getf registry :instance))
+    (let* ((instance-ls (getf registry :instances))
            (funcs (getf registry :funcs))
            (implmted-funcs (getf funcs :implmted))
            (not-implmted-funcs (getf funcs :not-implmted)))
@@ -353,15 +367,17 @@
         (error "~a类型的某些方法不是~a类的方法!您给出~{~a. ~};~@
                实际上只有~{~a. ~}(已实现); ~{~a. ~}(未实现)."
                type-name class-name fun-ls implmted-funcs not-implmted-funcs))
-      (unless (member type-name instance-ls) (push type-name instance-ls)) ; 注册实例
-      `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method x)) func-form-ls)))))
+      (unless (member type-name instance-ls)
+        (push type-name (getf registry :instances))) ; 注册实例
+      `(progn ,@(mapcar #'(lambda (x) `(def-hs-method #'(lambda (_) (declare (ignore _)) t) ,@x))
+                        func-form-ls)))))
 
 (defmacro def-hs-instance* (class-name type-name &rest func-form-ls)
   "模拟Haskell的实例定义"
   (let ((fun-ls (mapcar #'car func-form-ls))
         (registry (gethash class-name *class-registry*)))
     (when (null registry) (error "没有类型类~a!~%" class-name))
-    (let* ((instance-ls (getf registry :instance))
+    (let* ((instance-ls (getf registry :instances))
            (funcs (getf registry :funcs))
            (implmted-funcs (getf funcs :implmted))
            (not-implmted-funcs (getf funcs :not-implmted)))
@@ -374,8 +390,10 @@
         (error "~a类型的某些方法不是~a类的方法!您给出~{~a. ~};~@
                实际上只有~{~a. ~}(已实现); ~{~a. ~}(未实现)."
                type-name class-name fun-ls implmted-funcs not-implmted-funcs))
-      (unless (member type-name instance-ls) (push type-name instance-ls)) ; 注册实例
-      `(progn ,@(mapcar #'(lambda (x) (cons 'def-hs-method* x)) func-form-ls)))))
+      (unless (member type-name instance-ls)
+        (push type-name (getf registry :instances))) ; 注册实例
+      `(progn ,@(mapcar #'(lambda (x) `(def-hs-method* #'(lambda (_) (declare (ignore )) t) ,@x))
+                        func-form-ls)))))
 
 ;(def-hs-instance |Class-name| |Type-name|
 ;  (func1 () ((branch ...) (branch ...)))
@@ -533,6 +551,10 @@
                  (format nil "(~a~{ ~a~})" constructor-name
                          (mapcar #'(lambda (v) (|show| v))
                                  field-values)))))))))
+
+(def-hs-instance |Show| number)
+(def-hs-instance |Show| string)
+
 (def-hs-instance |Show| |List|
   (|show| (|List|)
     (branch ((_ ([])))
@@ -544,6 +566,7 @@
                          (t (concatenate 'string (if headp "[" ",")
                                          (|show| (head hs-ls)) (handler (tail hs-ls)))))))
               (handler hs-ls t)))))
+(def-hs-instance |Show| |Maybe|)
 (let* ((ls (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([])))
        (just-ls (|Just| ls))
        (just-nothing (|Just| (|Nothing|))))
