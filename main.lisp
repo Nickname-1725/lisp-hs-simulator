@@ -559,15 +559,35 @@
                   (|Nothing|))
           (branch (func (_ (|Just| a)))
                   (|Just| (funcall func a)))))
+
+; data Either a b = Left a | Right b
+(def-hs-data |Either|
+  (|Left| left)
+  (|Right| right))
+
+; instance Functor (Either a) where 
+;   fmap _ (Left x) = Left x
+;   fmap func (Right x) = Right $ func x
+(def-hs-instance |Functor| |Either|
+  (|fmap| (_ |Either|)
+          (branch (_ (_ (|Left| x)))
+                  (|Left| x))
+          (branch (func (_ (|Right| x)))
+                  (|Right| (funcall func x)))))
+
 (let* ((ls (reduce #'(lambda (acc x) (|:| x acc)) '(5 4 3 2 1) :initial-value ([])))
        (func #'1+)
        (ls* (|fmap| func ls))
        (just (|Just| 1))
-       (just* (|fmap| func just)))
+       (just* (|fmap| func just))
+       (left (|Left| 1)) (left* (|fmap| func left))
+       (right (|Right| 1)) (right* (|fmap| func right)))
   (format t "~a~%" (|show| ls))
   (format t "~a~%" (|show| ls*))
   (format t "~a~%" (|show| just))
-  (format t "~a~%" (|show| just*)))
+  (format t "~a~%" (|show| just*))
+  (format t "fmap之前:~a,fmap之后:~a~%" (|show| left) (|show| left*))
+  (format t "fmap之前:~a,fmap之后:~a~%" (|show| right) (|show| right*)))
 
 (format t "## 应用函子类型类~%")
 (def-hs-class |Applicative|
