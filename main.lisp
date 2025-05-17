@@ -60,10 +60,11 @@
     (format t "~a~%" f)))
 
 (format t "##类型错误的构造函数")
-(handler-case
-    (let ((ls (|List| 1 2)))
-      (format t "~a(实际上不会运行)~%" ls))
-  (t (err) (warn "错误信息:~a~%" err)))
+; 以下代码在第二次被ASDF加载时会被移除，最终产生警告，观察效果请先取消注释
+;(handler-case
+;    (let ((ls (|List| 1 2)))
+;      (format t "~a(实际上不会运行)~%" ls))
+;  (t (err) (warn "错误信息:~a~%" err)))
 
 ; case ls of
 ;   []         -> ...
